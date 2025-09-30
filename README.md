@@ -1,1 +1,1 @@
-# -customer-purchase-prediction
+# customer_purchase_prediction
