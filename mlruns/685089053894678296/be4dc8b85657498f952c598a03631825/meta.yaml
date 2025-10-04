@@ -1,0 +1,14 @@
+artifact_uri: mlflow-artifacts:/685089053894678296/be4dc8b85657498f952c598a03631825/artifacts
+end_time: 1759548238760
+entry_point_name: ''
+experiment_id: '685089053894678296'
+lifecycle_stage: active
+run_id: be4dc8b85657498f952c598a03631825
+run_name: brawny-hog-297
+source_name: ''
+source_type: 4
+source_version: ''
+start_time: 1759548076207
+status: 3
+tags: []
+user_id: root

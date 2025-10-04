@@ -1,0 +1,14 @@
+artifact_uri: mlflow-artifacts:/685089053894678296/7090281eaff14b54b3d0258771d9f90b/artifacts
+end_time: 1759547391356
+entry_point_name: ''
+experiment_id: '685089053894678296'
+lifecycle_stage: active
+run_id: 7090281eaff14b54b3d0258771d9f90b
+run_name: bittersweet-bear-185
+source_name: ''
+source_type: 4
+source_version: ''
+start_time: 1759547227119
+status: 3
+tags: []
+user_id: root

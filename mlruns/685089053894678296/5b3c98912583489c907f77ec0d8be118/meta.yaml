@@ -1,0 +1,14 @@
+artifact_uri: mlflow-artifacts:/685089053894678296/5b3c98912583489c907f77ec0d8be118/artifacts
+end_time: 1759547575265
+entry_point_name: ''
+experiment_id: '685089053894678296'
+lifecycle_stage: active
+run_id: 5b3c98912583489c907f77ec0d8be118
+run_name: crawling-bird-482
+source_name: ''
+source_type: 4
+source_version: ''
+start_time: 1759547416283
+status: 3
+tags: []
+user_id: root
