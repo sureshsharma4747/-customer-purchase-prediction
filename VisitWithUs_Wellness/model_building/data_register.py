@@ -4,7 +4,8 @@ import os
 api = HfApi(token=os.getenv("HF_TOKEN"))
 
 # Define your dataset repo
-repo_id = "sureshsharma4747/Customer-Purchase-Dataset"
+repo_id = "sureshsharma4747/Customer-Purchase-Prediction"
+repo_type="dataset"
 
 # 1. Create dataset repo if not exists
 try:

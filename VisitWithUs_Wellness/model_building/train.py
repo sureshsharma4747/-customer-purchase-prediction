@@ -1,76 +1,62 @@
-# for data manipulation
+from huggingface_hub import hf_hub_download
 import pandas as pd
 from sklearn.preprocessing import StandardScaler, OneHotEncoder
-from sklearn.preprocessing import LabelEncoder
 from sklearn.compose import make_column_transformer
 from sklearn.pipeline import make_pipeline
-# for model training, tuning, and evaluation
 import xgboost as xgb
 from sklearn.model_selection import GridSearchCV
-from sklearn.metrics import accuracy_score, classification_report, recall_score
-# for model serialization
+from sklearn.metrics import classification_report, accuracy_score
 import joblib
-# for creating a folder
-import os
-# for hugging face space authentication to upload files
-from huggingface_hub import login, HfApi, create_repo
-from huggingface_hub.utils import RepositoryNotFoundError, HfHubHTTPError
+from huggingface_hub import HfApi, create_repo
+from huggingface_hub.utils import RepositoryNotFoundError
 import mlflow
+import mlflow.sklearn
+from sklearn.metrics import precision_score, recall_score, f1_score
 
-mlflow.set_tracking_uri("http://localhost:5000")
-mlflow.set_experiment("Tourism_Package_Prediction")
-
+# Initialize Hugging Face API
 api = HfApi()
 
+# Load dataset from Hugging Face dataset repo
+repo_id = "sureshsharma4747/Customer-Purchase-Prediction"
 
-Xtrain_path = "hf://datasets/sureshsharma4747/Customer-Purchase-Model/Xtrain.csv"
-Xtest_path = "hf://datasets/sureshsharma4747/Customer-Purchase-Model/Xtest.csv"
-ytrain_path = "hf://datasets/sureshsharma4747/Customer-Purchase-Model/ytrain.csv"
-ytest_path = "hf://datasets/sureshsharma4747/Customer-Purchase-Model/ytest.csv"
+Xtrain_path = hf_hub_download(repo_id=repo_id, filename="Xtrain.csv", repo_type="dataset")
+Xtest_path  = hf_hub_download(repo_id=repo_id, filename="Xtest.csv", repo_type="dataset")
+ytrain_path = hf_hub_download(repo_id=repo_id, filename="ytrain.csv", repo_type="dataset")
+ytest_path  = hf_hub_download(repo_id=repo_id, filename="ytest.csv", repo_type="dataset")
 
 Xtrain = pd.read_csv(Xtrain_path)
 Xtest = pd.read_csv(Xtest_path)
-ytrain = pd.read_csv(ytrain_path)
-ytest = pd.read_csv(ytest_path)
+ytrain = pd.read_csv(ytrain_path).values.ravel()  # flatten to 1D
+ytest = pd.read_csv(ytest_path).values.ravel()
 
-
-# One-hot encode and scale numeric features
+# Features
 numeric_features = [
-    'Age',
-    'CityTier',
-    'DurationOfPitch',
-    'NumberOfPersonVisiting',
-    'NumberOfFollowups',
-    'PreferredPropertyStar',
-    'NumberOfTrips',
-    'Passport',
-    'PitchSatisfactionScore',
-    'OwnCar',
-    'NumberOfChildrenVisiting',
-    'MonthlyIncome'
+    'Age', 'CityTier', 'DurationOfPitch', 'NumberOfPersonVisiting',
+    'NumberOfFollowups', 'PreferredPropertyStar', 'NumberOfTrips', 'Passport',
+    'PitchSatisfactionScore', 'OwnCar', 'NumberOfChildrenVisiting', 'MonthlyIncome'
 ]
-categorical_features = ['TypeofContact']
-categorical_features = ['Occupation']
-categorical_features = ['Gender']
-categorical_features = ['ProductPitched']
-categorical_features = ['MaritalStatus']
-categorical_features = ['Designation']
 
+categorical_features = [
+    'TypeofContact', 'Occupation', 'Gender',
+    'ProductPitched', 'MaritalStatus', 'Designation'
+]
 
-# Set the clas weight to handle class imbalance
-class_weight = ytrain.value_counts()[0] / ytrain.value_counts()[1]
-class_weight
+# Handle class imbalance
+import numpy as np
 
-# Define the preprocessing steps
+classes, counts = np.unique(ytrain, return_counts=True)
+class_weight = counts[0] / counts[1]
+
+# Preprocessing
 preprocessor = make_column_transformer(
     (StandardScaler(), numeric_features),
     (OneHotEncoder(handle_unknown='ignore'), categorical_features)
 )
 
-# Define base XGBoost model
-xgb_model = xgb.XGBClassifier(scale_pos_weight=class_weight, random_state=42)
+# Base model
+#xgb_model = xgb.XGBClassifier(scale_pos_weight=class_weight, random_state=42, use_label_encoder=False, eval_metric="logloss")
 
-# Define hyperparameter grid
+# Hyperparameter grid
 param_grid = {
     'xgbclassifier__n_estimators': [50, 75, 100],
     'xgbclassifier__max_depth': [2, 3, 4],
@@ -80,82 +66,61 @@ param_grid = {
     'xgbclassifier__reg_lambda': [0.4, 0.5, 0.6],
 }
 
-# Model pipeline
+# Pipeline
 model_pipeline = make_pipeline(preprocessor, xgb_model)
 
-# Start MLflow run
+# Start MLflow experiment
+mlflow.set_experiment("Customer_Purchase_Classification")
 with mlflow.start_run():
-    # Hyperparameter tuning
+    # Train with hyperparameter tuning
     grid_search = GridSearchCV(model_pipeline, param_grid, cv=5, n_jobs=-1)
     grid_search.fit(Xtrain, ytrain)
 
-    # Log all parameter combinations and their mean test scores
-    results = grid_search.cv_results_
-    for i in range(len(results['params'])):
-        param_set = results['params'][i]
-        mean_score = results['mean_test_score'][i]
-        std_score = results['std_test_score'][i]
-
-        # Log each combination as a separate MLflow run
-        with mlflow.start_run(nested=True):
-            mlflow.log_params(param_set)
-            mlflow.log_metric("mean_test_score", mean_score)
-            mlflow.log_metric("std_test_score", std_score)
-
-    # Log best parameters separately in main run
-    mlflow.log_params(grid_search.best_params_)
-
-    # Store and evaluate the best model
+    # Best model
     best_model = grid_search.best_estimator_
 
+    # Log best hyperparameters
+    mlflow.log_params(grid_search.best_params_)
+
+    # Evaluation
     classification_threshold = 0.45
-
-    y_pred_train_proba = best_model.predict_proba(Xtrain)[:, 1]
-    y_pred_train = (y_pred_train_proba >= classification_threshold).astype(int)
-
     y_pred_test_proba = best_model.predict_proba(Xtest)[:, 1]
     y_pred_test = (y_pred_test_proba >= classification_threshold).astype(int)
 
-    train_report = classification_report(ytrain, y_pred_train, output_dict=True)
-    test_report = classification_report(ytest, y_pred_test, output_dict=True)
+    acc = accuracy_score(ytest, y_pred_test)
+    precision = precision_score(ytest, y_pred_test)
+    recall = recall_score(ytest, y_pred_test)
+    f1 = f1_score(ytest, y_pred_test)
+    print("Classification Report (Test Data):")
+    print(classification_report(ytest, y_pred_test))
 
-    # Log the metrics for the best model
-    mlflow.log_metrics({
-        "train_accuracy": train_report['accuracy'],
-        "train_precision": train_report['1']['precision'],
-        "train_recall": train_report['1']['recall'],
-        "train_f1-score": train_report['1']['f1-score'],
-        "test_accuracy": test_report['accuracy'],
-        "test_precision": test_report['1']['precision'],
-        "test_recall": test_report['1']['recall'],
-        "test_f1-score": test_report['1']['f1-score']
-    })
+    # Log metrics
+    mlflow.log_metric("accuracy", acc)
+    mlflow.log_metric("precision", precision)
+    mlflow.log_metric("recall", recall)
+    mlflow.log_metric("f1_score", f1)
 
-    # Save the model locally
+    # Save and log model
     model_path = "best_customer_purchase_model_v1.joblib"
     joblib.dump(best_model, model_path)
+    mlflow.sklearn.log_model(best_model, "model")
+    print(f"✅ Model saved locally at {model_path}")
 
-    # Log the model artifact
-    mlflow.log_artifact(model_path, artifact_path="model")
-    print(f"Model saved as artifact at: {model_path}")
-
-    # Upload to Hugging Face
-    repo_id = "sureshsharma4747/Customer-Purchase-Model"
-    repo_type = "model"
-
-    # Step 1: Check if the space exists
+    # Upload to Hugging Face Model Hub
+    model_repo_id = "sureshsharma4747/Customer-Purchase-Model"
     try:
-        api.repo_info(repo_id=repo_id, repo_type=repo_type)
-        print(f"Space '{repo_id}' already exists. Using it.")
+        api.repo_info(repo_id=model_repo_id, repo_type="model")
+        print(f"Model repo '{model_repo_id}' already exists. Using it.")
     except RepositoryNotFoundError:
-        print(f"Space '{repo_id}' not found. Creating new space...")
-        create_repo(repo_id=repo_id, repo_type=repo_type, private=False)
-        print(f"Space '{repo_id}' created.")
+        print(f"Model repo '{model_repo_id}' not found. Creating new repo...")
+        create_repo(repo_id=model_repo_id, repo_type="model", private=False)
+        print(f"Model repo '{model_repo_id}' created.")
 
-    # create_repo("churn-model", repo_type="model", private=False)
     api.upload_file(
-        path_or_fileobj="best_customer_purchase_model_v1.joblib",
-        path_in_repo="best_customer_purchase_model_v1.joblib",
-        repo_id=repo_id,
-        repo_type=repo_type,
+        path_or_fileobj=model_path,
+        path_in_repo=model_path,
+        repo_id=model_repo_id,
+        repo_type="model",
     )
+
+    print(f"🚀 Model uploaded successfully: https://huggingface.co/{model_repo_id}")
